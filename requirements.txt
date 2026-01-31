@@ -1,6 +1,7 @@
-streamlit
 pandas
-plotly
-openpyxl
+numpy
+matplotlib
+seaborn
 statsmodels
 linearmodels
+openpyxl
