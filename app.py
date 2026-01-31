@@ -28,24 +28,15 @@ na qualidade acadêmica das universidades federais brasileiras.
 # ======================================================
 # SIDEBAR
 # ======================================================
-st.sidebar.header("⚙️ Configurações")
+st.sidebar.header("ℹ️ Informações do estudo")
 
 st.sidebar.markdown("""
-### ℹ️ Sobre o painel
-- Unidades: Universidades Federais  
-- Variável dependente: **IGC (log)**  
-- Variável explicativa: **Orçamento (log)**  
-- Métodos: FE, RE e DiD (Teto de Gastos – 2017)
+- **Unidades:** Universidades Federais  
+- **Período:** Série anual  
+- **Variável dependente:** IGC (log)  
+- **Variável explicativa:** Orçamento (log, defasado)  
+- **Métodos:** FE, RE e DiD (Teto de Gastos – 2017)
 """)
-
-uploaded_file = st.sidebar.file_uploader(
-    "📂 Carregue o banco de dados (CSV ou Excel)",
-    type=["csv", "xlsx"]
-)
-
-if uploaded_file is None:
-    st.info("⬅️ Faça o upload do arquivo para iniciar a análise.")
-    st.stop()
 
 modelo_tipo = st.sidebar.radio(
     "📊 Modelo econométrico",
@@ -53,17 +44,11 @@ modelo_tipo = st.sidebar.radio(
 )
 
 # ======================================================
-# FUNÇÃO DE CARGA DE DADOS
+# CARGA AUTOMÁTICA DOS DADOS
 # ======================================================
 @st.cache_data
-def carregar_dados(file):
-    if file.name.endswith(".csv"):
-        try:
-            df = pd.read_csv(file)
-        except:
-            df = pd.read_csv(file, sep=";", encoding="latin1")
-    else:
-        df = pd.read_excel(file)
+def carregar_dados():
+    df = pd.read_excel("dados/dados_finais.xlsx")
 
     df.columns = df.columns.str.strip()
 
@@ -85,23 +70,23 @@ def carregar_dados(file):
     df["ln_Orcamento"] = np.log(df["Orcamento"])
     df["ln_IGC"] = np.log(df["IGC"])
 
-    # Defasagem do orçamento (efeito mais realista)
+    # Defasagem do orçamento
     df["ln_Orcamento_lag"] = df.groupby("Universidade")["ln_Orcamento"].shift(1)
 
-    # Variáveis DiD (Teto de Gastos – 2017)
+    # DiD – Teto de Gastos (2017)
     df["Pos_Teto"] = (df["Ano"] >= 2017).astype(int)
     df["Interacao"] = df["ln_Orcamento_lag"] * df["Pos_Teto"]
 
     return df.dropna()
 
-df = carregar_dados(uploaded_file)
+df = carregar_dados()
 
 # ======================================================
 # FILTRO DE UNIVERSIDADE
 # ======================================================
 uni_selecionada = st.selectbox(
     "🏫 Destaque uma universidade",
-    df["Universidade"].unique()
+    sorted(df["Universidade"].unique())
 )
 
 # ======================================================
@@ -110,7 +95,7 @@ uni_selecionada = st.selectbox(
 tab1, tab2 = st.tabs(["📈 Evidência Descritiva", "🧮 Modelos Econométricos"])
 
 # ======================================================
-# TAB 1 – GRÁFICOS
+# TAB 1 – EVIDÊNCIA DESCRITIVA
 # ======================================================
 with tab1:
     st.subheader("Evolução temporal")
@@ -123,7 +108,7 @@ with tab1:
             x="Ano",
             y="Orcamento_Milhoes",
             color="Universidade",
-            title="Orçamento das Universidades (R$ milhões)"
+            title="Orçamento das Universidades Federais (R$ milhões)"
         )
         fig_orc.update_traces(opacity=0.2)
         fig_orc.update_traces(
@@ -157,7 +142,7 @@ with tab1:
         y="ln_IGC",
         opacity=0.5,
         trendline="ols",
-        title="Orçamento (t-1) e IGC (log-log)"
+        title="Orçamento (t−1) e IGC – Relação log-log"
     )
     st.plotly_chart(fig_scatter, use_container_width=True)
 
@@ -165,7 +150,7 @@ with tab1:
 # TAB 2 – ECONOMETRIA
 # ======================================================
 with tab2:
-    st.subheader(f"Modelo selecionado: {modelo_tipo}")
+    st.subheader(f"Modelo: {modelo_tipo}")
 
     df_panel = df.set_index(["Universidade", "Ano"])
     exog = sm.add_constant(df_panel[["ln_Orcamento_lag"]])
@@ -174,7 +159,7 @@ with tab2:
         st.markdown("""
 **Modelo de Efeitos Fixos**  
 Controla características invariantes no tempo de cada universidade
-(localização, tradição, perfil institucional).
+(tradição, localização, perfil institucional).
 """)
         mod = PanelOLS(df_panel["ln_IGC"], exog, entity_effects=True)
         res = mod.fit(cov_type="clustered", cluster_entity=True)
@@ -187,7 +172,7 @@ Controla características invariantes no tempo de cada universidade
     elif modelo_tipo == "Efeitos Aleatórios (RE)":
         st.markdown("""
 **Modelo de Efeitos Aleatórios**  
-Assume que diferenças institucionais não observadas
+Assume que as heterogeneidades institucionais não observadas
 não são correlacionadas com o orçamento.
 """)
         mod = RandomEffects(df_panel["ln_IGC"], exog)
@@ -201,8 +186,8 @@ não são correlacionadas com o orçamento.
     else:
         st.markdown("""
 **Diferença-em-Diferenças (DiD)**  
-Avalia se o efeito do orçamento mudou após a implementação
-do Teto de Gastos (2017).
+Avalia se o impacto do orçamento sobre o IGC
+se alterou após a implementação do Teto de Gastos (2017).
 """)
         formula = "ln_IGC ~ ln_Orcamento_lag + Pos_Teto + Interacao + C(Universidade)"
         mod = sm.formula.ols(formula, data=df)
@@ -237,3 +222,6 @@ do Teto de Gastos (2017).
             "Não foi encontrada evidência estatística robusta de que o orçamento "
             "afete o IGC no período analisado."
         )
+
+st.caption("Fonte: MEC / INEP. Elaboração própria.")
+
