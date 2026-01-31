@@ -137,5 +137,7 @@ streamlit run app.py
 ## 📚 Fonte dos Dados
 
 * **INEP / MEC** – Índice Geral de Cursos (IGC)
-* **Dados orçamentários públicos** das universidades federais
+* **Portal da Transparência** Orçamento das universidades federais
 * Elaboração própria
+
+  
