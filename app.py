@@ -183,3 +183,5 @@ with tab2:
         st.success("✅ Evidência estatística de impacto do orçamento no IGC.")
     else:
         st.warning("⚠️ Não há evidência estatística robusta de impacto.")
+
+
