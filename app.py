@@ -9,7 +9,7 @@ from linearmodels.panel import PanelOLS, RandomEffects
 # CONFIGURAÇÃO DA PÁGINA
 # ===============================
 st.set_page_config(
-    page_title="Monitor Federais (MVP)",
+    page_title="Monitor Federais | IGC",
     layout="wide",
     page_icon="🎓"
 )
@@ -17,45 +17,25 @@ st.set_page_config(
 # ===============================
 # CABEÇALHO
 # ===============================
-st.title("🎓 Monitor de Qualidade: Universidades Federais")
+st.title("🎓 Monitor de Qualidade das Universidades Federais")
 st.markdown("""
-**MVP – Análise Econométrica do Impacto Orçamentário**
+### Impacto dos Cortes Orçamentários sobre o IGC  
+Análise econométrica com dados em painel (10 maiores universidades federais)
 
-Este painel investiga a hipótese de que cortes orçamentários afetam a qualidade acadêmica,
-medida pelo **Índice Geral de Cursos (IGC)** das universidades federais.
-
-*Projeto acadêmico – Econometria / Dados em Painel*
+📌 *Projeto acadêmico – Econometria / Políticas Públicas*
 """)
 
-# ===============================
-# SIDEBAR – INPUTS
-# ===============================
-st.sidebar.header("⚙️ Configurações")
-
-uploaded_file = st.sidebar.file_uploader(
-    "📂 1. Carregue o arquivo de dados (CSV ou Excel)",
-    type=["csv", "xlsx"]
-)
-
-if uploaded_file is None:
-    st.info("👈 Faça o upload do arquivo de dados para iniciar a análise.")
-    st.stop()
+st.divider()
 
 # ===============================
-# CARREGAMENTO E TRATAMENTO DOS DADOS
+# CARREGAMENTO DOS DADOS
 # ===============================
 @st.cache_data
-def carregar_dados(file):
-    if file.name.endswith(".csv"):
-        try:
-            df = pd.read_csv(file)
-        except:
-            df = pd.read_csv(file, sep=";", encoding="latin1")
-    else:
-        df = pd.read_excel(file)
+def carregar_dados():
+    df = pd.read_excel("dados/dados_finais.xlsx")
 
-    # Padronização de nomes
     df.columns = df.columns.str.strip()
+
     mapa = {
         "Orçamento(GND 3+4)": "Orcamento",
         "IGC (Contínuo)": "IGC",
@@ -64,57 +44,78 @@ def carregar_dados(file):
     }
     df = df.rename(columns=mapa)
 
-    # Ordenação
     df = df.sort_values(["Universidade", "Ano"])
 
-    # Interpolação do IGC
     df["IGC"] = (
         df.groupby("Universidade")["IGC"]
         .transform(lambda x: x.interpolate().ffill())
     )
 
-    # Transformações
     df["Orcamento_Milhoes"] = df["Orcamento"] / 1_000_000
     df["ln_Orcamento"] = np.log(df["Orcamento"])
     df["ln_IGC"] = np.log(df["IGC"])
 
-    # Variáveis institucionais
     df["Pos_Teto"] = (df["Ano"] >= 2017).astype(int)
     df["Interacao"] = df["ln_Orcamento"] * df["Pos_Teto"]
 
     return df
 
-df = carregar_dados(uploaded_file)
+df = carregar_dados()
 
 # ===============================
-# FILTROS
+# SIDEBAR
 # ===============================
-lista_unis = sorted(df["Universidade"].unique())
+st.sidebar.header("⚙️ Controles")
+
 uni_selecionada = st.sidebar.selectbox(
-    "🏫 2. Universidade em destaque",
-    lista_unis
+    "🏫 Universidade em destaque",
+    sorted(df["Universidade"].unique())
 )
 
 modelo_tipo = st.sidebar.radio(
-    "📊 3. Modelo Econométrico",
-    ["Efeitos Fixos (FE)", "Efeitos Aleatórios (RE)", "Diferença-em-Diferenças (DiD)"]
+    "📊 Modelo Econométrico",
+    [
+        "Efeitos Fixos (FE)",
+        "Efeitos Aleatórios (RE)",
+        "Diferença-em-Diferenças (DiD)"
+    ]
 )
+
+# ===============================
+# MÉTRICAS GERAIS
+# ===============================
+col_m1, col_m2, col_m3 = st.columns(3)
+
+col_m1.metric(
+    "Universidades analisadas",
+    df["Universidade"].nunique()
+)
+col_m2.metric(
+    "Período",
+    f"{df['Ano'].min()} – {df['Ano'].max()}"
+)
+col_m3.metric(
+    "Ano do choque institucional",
+    "2017 (Teto de Gastos)"
+)
+
+st.divider()
 
 # ===============================
 # TABS
 # ===============================
 tab1, tab2 = st.tabs(
-    ["📈 Visualização dos Dados", "🧮 Resultados Econométricos"]
+    ["📈 Evolução dos Indicadores", "🧮 Resultados Econométricos"]
 )
 
 # ===============================
-# TAB 1 – VISUALIZAÇÃO
+# TAB 1 – GRÁFICOS
 # ===============================
 with tab1:
     col1, col2 = st.columns(2)
 
     with col1:
-        st.subheader("Evolução do Orçamento (R$ milhões)")
+        st.subheader("Orçamento (R$ milhões)")
         fig_orc = px.line(
             df,
             x="Ano",
@@ -131,7 +132,7 @@ with tab1:
         st.plotly_chart(fig_orc, use_container_width=True)
 
     with col2:
-        st.subheader("Evolução do IGC")
+        st.subheader("Índice Geral de Cursos (IGC)")
         fig_igc = px.line(
             df,
             x="Ano",
@@ -146,66 +147,84 @@ with tab1:
             line=dict(width=4)
         )
         st.plotly_chart(fig_igc, use_container_width=True)
-        st.caption("Obs.: valores interpolados para anos sem divulgação.")
+
+        st.caption("Valores interpolados para anos sem divulgação oficial.")
 
 # ===============================
 # TAB 2 – MODELOS
 # ===============================
 with tab2:
-    st.header(f"Modelo Selecionado: {modelo_tipo}")
+    st.subheader(f"Modelo Selecionado: {modelo_tipo}")
 
     df_panel = df.set_index(["Universidade", "Ano"])
 
     if modelo_tipo == "Efeitos Fixos (FE)":
-        st.info("Controla características fixas das universidades.")
+        st.info("Controla características fixas não observáveis das universidades.")
         exog = df_panel[["ln_Orcamento"]]
-        mod = PanelOLS(df_panel["ln_IGC"], exog, entity_effects=True)
-        res = mod.fit(cov_type="clustered", cluster_entity=True)
-        st.text(res.summary)
+
+        mod = PanelOLS(
+            df_panel["ln_IGC"],
+            exog,
+            entity_effects=True
+        )
+
+        res = mod.fit(
+            cov_type="clustered",
+            cluster_entity=True
+        )
 
         coef = res.params["ln_Orcamento"]
         p_val = res.pvalues["ln_Orcamento"]
+
+        st.text(res.summary)
 
     elif modelo_tipo == "Efeitos Aleatórios (RE)":
         st.info("Assume heterogeneidade aleatória entre universidades.")
         exog = sm.add_constant(df_panel[["ln_Orcamento"]])
+
         mod = RandomEffects(df_panel["ln_IGC"], exog)
         res = mod.fit()
-        st.text(res.summary)
 
         coef = res.params["ln_Orcamento"]
         p_val = res.pvalues["ln_Orcamento"]
 
+        st.text(res.summary)
+
     else:
         st.info("Avalia mudança estrutural após o Teto de Gastos (2017).")
+
         formula = "ln_IGC ~ ln_Orcamento + Pos_Teto + Interacao + C(Universidade)"
         mod = sm.formula.ols(formula, data=df)
-        res = mod.fit(cov_type="cluster", cov_kwds={"groups": df["Universidade"]})
-        st.text(res.summary())
+        res = mod.fit(
+            cov_type="cluster",
+            cov_kwds={"groups": df["Universidade"]}
+        )
 
         coef = res.params["Interacao"]
         p_val = res.pvalues["Interacao"]
 
+        st.text(res.summary())
+
     # ===============================
-    # INTERPRETAÇÃO AUTOMÁTICA
+    # INTERPRETAÇÃO
     # ===============================
     st.divider()
-    st.subheader("🤖 Interpretação Automática")
+    st.subheader("📌 Interpretação Automática")
 
-    col_a, col_b = st.columns(2)
-    col_a.metric("Coeficiente", f"{coef:.4f}")
-    col_b.metric("P-valor", f"{p_val:.4f}")
+    c1, c2 = st.columns(2)
+    c1.metric("Coeficiente estimado", f"{coef:.4f}")
+    c2.metric("P-valor", f"{p_val:.4f}")
 
     if p_val < 0.05:
         st.success("Resultado estatisticamente significativo.")
         st.markdown(
-            f"Um aumento de **1% no orçamento** está associado a uma variação de "
+            f"Uma variação de **1% no orçamento** está associada a uma variação de "
             f"**{coef:.4f}% no IGC**."
         )
     else:
         st.warning("Resultado não estatisticamente significativo.")
         st.markdown(
-            "O efeito pode ser diluído pela **inércia do IGC**, "
-            "que reage lentamente a mudanças orçamentárias."
+            "O IGC apresenta **inércia**, reagindo lentamente a choques orçamentários."
         )
+
 
