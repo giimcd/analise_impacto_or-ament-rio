@@ -1,3 +1,4 @@
+streamlit
 pandas
 numpy
 matplotlib
@@ -5,4 +6,3 @@ seaborn
 statsmodels
 linearmodels
 openpyxl
-streamlit
